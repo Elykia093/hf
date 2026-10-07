@@ -1,0 +1,15 @@
+{
+  "name": "hf-browser-keepalive",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "每天使用 Chromium 访问 Hugging Face 上的 Embykeeper Space",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "keepalive": "playwright test --project=live",
+    "test": "playwright test --project=regression"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
