@@ -20,7 +20,7 @@ export default defineConfig({
     video: 'retain-on-failure'
   },
   projects: [
-    { name: 'live', testMatch: 'keepalive.spec.mjs' },
+    { name: 'live', testMatch: 'keepalive.spec.mjs', timeout: 660_000 },
     { name: 'regression', testMatch: 'visit-space.spec.mjs', timeout: 30_000 }
   ]
 });

@@ -2,10 +2,41 @@ import { expect } from '@playwright/test';
 
 // Only the initial GET is polled: a sleeping Space can return 502/503/504
 // while starting. Authentication errors and invalid pages fail immediately.
-export async function visitSpace(page, url, { startupTimeout = 180_000 } = {}) {
+export async function visitSpace(page, url, { startupTimeout = 600_000, logger = console.log } = {}) {
   let response;
+  let attempt = 0;
+  const target = new URL(url);
+  const safeTarget = `${target.origin}${target.pathname}`;
+  const requestIdHeaders = ['x-request-id', 'request-id', 'x-correlation-id', 'x-amzn-requestid', 'cf-ray'];
+
   await expect.poll(async () => {
-    response = await page.goto(url, { waitUntil: 'domcontentloaded' });
+    attempt += 1;
+    try {
+      response = await page.goto(url, { waitUntil: 'domcontentloaded' });
+    } catch (error) {
+      logger(JSON.stringify({
+        event: 'space-main-document',
+        target: safeTarget,
+        attempt,
+        status: null,
+        requestId: null,
+        navigationError: error?.name ?? 'Error',
+        time: new Date().toISOString()
+      }));
+      throw error;
+    }
+
+    const headers = response?.headers() ?? {};
+    const requestIdHeader = requestIdHeaders.find(name => headers[name]);
+    logger(JSON.stringify({
+      event: 'space-main-document',
+      target: safeTarget,
+      attempt,
+      status: response?.status() ?? null,
+      requestId: requestIdHeader ? headers[requestIdHeader] : null,
+      requestIdHeader: requestIdHeader ?? null,
+      time: new Date().toISOString()
+    }));
     return ![502, 503, 504].includes(response?.status());
   }, {
     message: 'Space should finish starting',

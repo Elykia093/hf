@@ -18,6 +18,7 @@ test.beforeEach(async () => {
   requests = [];
   server = createServer((request, response) => {
     requests.push(request.url);
+    response.setHeader('x-request-id', `test-${requests.length}`);
     if (request.url === '/healthz') {
       response.writeHead(healthStatus, { 'Content-Type': 'text/plain' });
       return response.end(healthBody);
@@ -54,8 +55,14 @@ test('loads scripts and images, then checks health in the browser', async ({ pag
 
 test('waits for a starting Space to become available', async ({ page }) => {
   coldStarts = 1;
-  await visitSpace(page, baseUrl, { startupTimeout: 15_000 });
+  const navigationLogs = [];
+  await visitSpace(page, baseUrl, {
+    startupTimeout: 15_000,
+    logger: line => navigationLogs.push(JSON.parse(line))
+  });
   expect(requests.filter(url => url === '/').length).toBe(2);
+  expect(navigationLogs.map(entry => entry.status)).toEqual([503, 200]);
+  expect(navigationLogs.map(entry => entry.requestId)).toEqual(['test-1', 'test-2']);
 });
 
 test('rejects a main document with an authentication error', async ({ page }) => {
