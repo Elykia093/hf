@@ -2,7 +2,7 @@ import { expect } from '@playwright/test';
 
 // Only the initial GET is polled: a sleeping Space can return 502/503/504
 // while starting. Authentication errors and invalid pages fail immediately.
-export async function visitSpace(page, url, { startupTimeout = 600_000, logger = console.log } = {}) {
+export async function visitSpace(page, url, { startupTimeout = 1_200_000, logger = console.log } = {}) {
   let response;
   let attempt = 0;
   const target = new URL(url);
