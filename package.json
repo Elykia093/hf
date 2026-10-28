@@ -1,13 +1,15 @@
 {
-  "name": "hf-browser-keepalive",
+  "name": "hf-space-wake",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "每天使用 Chromium 访问 Hugging Face 上的 Embykeeper Space",
+  "description": "每天检查 Hugging Face Space 状态，并在休眠时通过 API 唤醒",
   "engines": { "node": ">=24" },
   "scripts": {
+    "wake": "node scripts/wake-space.mjs",
     "keepalive": "playwright test --project=live",
-    "test": "playwright test --project=regression"
+    "test:unit": "node --test tests/wake-space.test.mjs",
+    "test": "npm run test:unit && playwright test --project=regression"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"

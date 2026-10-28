@@ -1,24 +1,31 @@
-# HF Browser Keepalive
+# HF Space Wake
 
-每天使用 Playwright 启动真实的无头 Chromium，访问 [Embykeeper Space](https://elykia-ek.hf.space/)，尝试维持 Space 活跃并验证页面可用。
+每天通过 Hugging Face API 检查 `Elykia/ek` 的 runtime 状态。只有 Space 处于休眠状态时才调用 restart API，不持续访问应用页面，也不需要浏览器登录。
 
-## 自动运行
+## GitHub Actions 配置
 
-- GitHub Actions 每天 **北京时间 09:17（UTC 01:17）** 执行一次。
-- 推送到 `main` 后也会执行；支持在 [Actions 页面](https://github.com/Elykia093/hf/actions/workflows/hf-keepalive.yml) 点击 **Run workflow** 手动运行。
-- Pull Request 只执行本地模拟服务器回归测试，不访问真实 Space。
-- 不需要 HF Token 或控制台密码；使用全新的浏览器上下文，只访问公开登录页，不提交登录表单。
+1. 在 Hugging Face 创建一个访问令牌：<https://huggingface.co/settings/tokens>。
+2. 使用细粒度令牌时，只给 `Elykia/ek` 这个 Space 的写权限。令牌必须能读取 runtime 并重启 Space，不要把令牌写进代码或提交到仓库。
+3. 打开 GitHub 仓库的 **Settings → Secrets and variables → Actions**，新增 Secret：
+   - 名称：`HF_TOKEN`
+   - 值：刚创建的 Hugging Face 令牌
+4. 默认目标已经是 `Elykia/ek`。如果以后换 Space，在同一个页面的 **Variables** 中新增或修改：
+   - 名称：`HF_SPACE_ID`
+   - 值：`namespace/space-name`，例如 `Elykia/ek`
+5. 在 **Actions → HF Space Wake → Run workflow** 手动运行一次，确认日志中出现 `space-runtime`。之后工作流会在每天北京时间 09:17（UTC 01:17）运行。
 
-## 每次检查什么
+工作流在 Pull Request 中只执行本地回归测试，不使用 `HF_TOKEN`。推送到 `main` 时会执行测试并检查目标 Space。公开仓库长期没有其他仓库活动时，GitHub 可能会停用 schedule；定期查看 Actions 状态。
 
-1. Chromium 打开页面，实际加载 JavaScript 和图片。
-2. 主文档必须返回 HTTP 200，标题包含 `Embykeeper`，密码框和登录按钮可见。
-3. 确认 Bootstrap JavaScript 已执行、登录插图加载完成。
-4. 在同一浏览器页面内请求 `/healthz`，必须返回 HTTP 200 且正文为 `200 OK`。
+## 状态处理
 
-Space 启动阶段的 HTTP 502/503/504 会在最多 20 分钟内逐步重试。其他错误、缺失页面元素、资源或健康检查失败会让任务失败；不会把错误页面当作成功。
+- `SLEEPING`：调用 `POST /api/spaces/{namespace}/{space}/restart`。
+- `STOPPED`：当前 Hugging Face API 用于闲置停止的状态，也调用 restart。
+- `RUNNING`、构建中和错误状态：只记录状态，不重复操作。
+- `PAUSED`：视为手动暂停，跳过，避免自动恢复一个明确被暂停的 Space。
 
-每次运行保留截图、访问详情和 HTML 报告；失败时额外保留 Playwright trace 和视频。可在 Actions 运行详情的 **Artifacts** 下载 `browser-evidence-*`，保存 7 天。任务失败通知由你自己的 GitHub Actions 通知设置控制。
+社区示例只判断 `SLEEPING`，但 Hugging Face 当前 SDK 的状态枚举使用 `STOPPED`/`PAUSED`。脚本兼容两种命名，避免只照搬社区脚本后无法唤醒当前 API 返回的状态。
+
+这个方案是周期性唤醒，不是常驻运行保证。免费硬件仍可能在两次任务之间休眠；GitHub schedule 也可能延迟。不要改成每几分钟 ping，社区已有高频自动访问触发 abuse-handler 暂停或账号锁定的案例。如果以后把目标 Space 升级到付费硬件，手动或自动 restart 后会产生硬件费用。
 
 ## 本地运行
 
@@ -28,24 +35,29 @@ Space 启动阶段的 HTTP 502/503/504 会在最多 20 分钟内逐步重试。�
 npm ci
 npx playwright install chromium
 npm test
-npm run keepalive
 ```
 
-Linux 首次运行建议用 `npx playwright install --with-deps chromium` 安装系统依赖。`npm test` 使用本地 HTTP 服务器和真实 Chromium，覆盖资源加载、冷启动、HTTP 401、健康接口失败和错误正文；`npm run keepalive` 才会访问真实 Space。
+PowerShell：
 
-查看结果：`npx playwright show-report`。截图和诊断文件位于 `test-results/`，报告位于 `playwright-report/`。再次运行会更新这些本地产物。
+```powershell
+$env:HF_TOKEN = 'hf_...'
+$env:HF_SPACE_ID = 'Elykia/ek'
+npm run wake
+```
 
-## 配置与停止
+Linux/macOS：
 
-- 每日时间：修改 `.github/workflows/hf-keepalive.yml` 的 cron，时区为 UTC。
-- Space 地址：修改 `tests/keepalive.spec.mjs` 中的 `spaceUrl`。目前断言针对 Embykeeper 登录页，换成其他应用时须同步修改 `scripts/visit-space.mjs` 和回归用例。
-- 暂停：在 Actions 工作流菜单选择 **Disable workflow**。恢复时选择 **Enable workflow**。
-- 回滚：暂停工作流后，revert 对应提交，再推送到 `main`。
+```sh
+HF_TOKEN=hf_... HF_SPACE_ID=Elykia/ek npm run wake
+```
 
-## 限制
+`npm test` 会运行 API 唤醒逻辑的单元测试和本地模拟服务器的 Playwright 回归测试。`npm run keepalive` 仍可用于需要时用真实 Chromium 检查页面、图片和 `/healthz`，但每日工作流不再用浏览器访问 Space。
 
-这实现的是每日浏览器访问，不代表已经验证 Space 长期不会休眠。免费 Space 的休眠策略由 Hugging Face 决定，浏览器访问无法保证全天持续在线。
+## 相关文件
 
-GitHub 定时任务可能延迟，繁忙时可能丢弃排队任务；只在默认分支运行。公开仓库连续 60 天没有仓库活动时，定时工作流会自动停用，因此需要定期查看工作流状态；不能把每日 Actions 执行视为一定会重置该期限。
+- `.github/workflows/hf-keepalive.yml`：每日检查并按需唤醒。
+- `scripts/wake-space.mjs`：读取 runtime 并调用 restart API。
+- `tests/wake-space.test.mjs`：API 脚本的单元测试。
+- `tests/keepalive.spec.mjs`：浏览器回归检查。
 
-官方说明：[GitHub schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)、[Hugging Face Space 休眠策略](https://huggingface.co/docs/hub/spaces-gpus#sleep-time)。
+官方资料：[Space 生命周期和休眠](https://huggingface.co/docs/hub/spaces-gpus#sleep-time)、[管理 Space runtime](https://huggingface.co/docs/huggingface_hub/guides/manage-spaces)、[GitHub Actions 定时任务](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#schedule)。

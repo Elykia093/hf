@@ -1,4 +1,4 @@
-name: HF Browser Keepalive
+name: HF Space Wake
 
 on:
   schedule:
@@ -14,11 +14,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: hf-browser-${{ github.ref }}
+  group: hf-space-wake-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  visit:
+  regression:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -42,10 +43,6 @@ jobs:
       - name: Run regression tests
         run: npm test
 
-      - name: Visit HF Space
-        if: github.event_name != 'pull_request'
-        run: npm run keepalive
-
       - name: Save browser evidence
         if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -56,3 +53,24 @@ jobs:
             playwright-report/
           retention-days: 7
           if-no-files-found: warn
+
+  wake:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Wake HF Space when it is sleeping
+        env:
+          HF_SPACE_ID: ${{ vars.HF_SPACE_ID || 'Elykia/ek' }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: npm run wake
